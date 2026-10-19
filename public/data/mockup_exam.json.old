@@ -1,0 +1,30 @@
+[
+  {
+    "id": 1,
+    "type": "ABC",
+    "question": "What is the standard speed limit in a built-up area in Poland during the day?",
+    "options": { "A": "50 km/h", "B": "60 km/h", "C": "40 km/h" },
+    "correct": "A",
+    "media": null,
+    "points": 3,
+    "cats": "A,B,C,D,T,AM,A1,A2,B1,C1,D1"
+  },
+  {
+    "id": 2,
+    "type": "YN",
+    "question": "Can you overtake the vehicle shown in the video?",
+    "correct": "N",
+    "media": "priority.mp4",
+    "points": 2,
+    "cats": "B,B1"
+  },
+  {
+    "id": 3,
+    "type": "YN",
+    "question": "Does the pedestrian on the right have the right of way?",
+    "correct": "Y",
+    "media": "crossing.jpg",
+    "points": 1,
+    "cats": "A,B,C,D,T,AM,A1,A2,B1,C1,D1"
+  }
+]

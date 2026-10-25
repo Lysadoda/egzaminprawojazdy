@@ -1,7 +1,8 @@
 <script lang="ts">
   import {untrack} from 'svelte';
-  import {db} from '../lib/store.svelte'; // Needed to fetch the explanations
+  import {db} from '../lib/store.svelte';
   import type {Question} from '../lib/types';
+  import {renderSafeMarkdown} from '../lib/markdown';
 
   let {
     question,
@@ -34,7 +35,7 @@
   );
 
   let optionsToRender = $derived(
-    question.type === 'YN' ? {Y: 'Yes', N: 'No'} : question.options || {},
+    question.type === 'YN' ? {T: 'Tak', N: 'Nie'} : question.options || {},
   );
 
   let phase = $state<'combined' | 'read' | 'answer'>('combined');
@@ -162,7 +163,7 @@
 
     {#if mode === 'test' && db.explanations}
       <div
-        class="bg-blue-50 border border-blue-200 rounded-lg p-5 shadow-sm animate-in fade-in slide-in-from-top-2"
+        class="bg-blue-50 border border-blue-200 rounded-lg p-5 shadow-sm animate-in fade-in slide-in-from-top-2 max-h-[120px] overflow-y-auto"
       >
         <div class="flex items-center gap-2 mb-2 font-bold text-blue-800">
           <svg
@@ -179,10 +180,11 @@
           >
           Explanation
         </div>
-        <p class="text-[15px] text-blue-950 leading-relaxed">
-          {db.explanations[String(question.id)] ||
-            'No explanation available for this question.'}
-        </p>
+        <div
+          class="prose prose-sm md:prose-base prose-blue max-w-none text-blue-950 leading-relaxed"
+        >
+          {@html renderSafeMarkdown(db.explanations[String(question.id)])}
+        </div>
       </div>
     {/if}
   </div>
@@ -256,14 +258,24 @@
     <!-- Answers Grid -->
     <div class="flex flex-col gap-3 overflow-y-auto pr-2 pb-4">
       {#each Object.entries(optionsToRender) as [key, value]}
+        {@const showFeedback = mode === 'test' && currentAnswer !== null}
+        {@const isCorrect = key === question.correct}
+        {@const isSelected = currentAnswer === key}
+
         <button
           onclick={() => onAnswer(key)}
           class="text-left flex items-center p-4 rounded-lg border-2 transition-all duration-150 outline-none
-            {currentAnswer === key
-            ? 'border-[#0C66E4] bg-[#E9F2FF] text-[#0C66E4] shadow-sm'
+            {showFeedback
+            ? isCorrect
+              ? 'border-green-500 bg-green-50 text-green-900 shadow-sm'
+              : isSelected
+                ? 'border-red-500 bg-red-50 text-red-900 shadow-sm'
+                : 'border-slate-200 bg-white opacity-40'
             : answersLocked
               ? 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 opacity-80'
-              : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:shadow-sm'}"
+              : currentAnswer === key
+                ? 'border-[#0C66E4] bg-[#E9F2FF] text-[#0C66E4] shadow-sm'
+                : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:shadow-sm'}"
         >
           <span
             class="w-10 h-10 rounded bg-white border-2 border-current flex items-center justify-center font-bold text-lg mr-4 shrink-0"
@@ -271,6 +283,39 @@
             {key}
           </span>
           <span class="text-[1.125rem] font-medium leading-tight">{value}</span>
+
+          <!-- Instant Feedback Icons -->
+          {#if showFeedback}
+            <div class="ml-auto shrink-0">
+              {#if isCorrect}
+                <svg
+                  class="w-6 h-6 text-green-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  ><path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="3"
+                    d="M5 13l4 4L19 7"
+                  ></path></svg
+                >
+              {:else if isSelected}
+                <svg
+                  class="w-6 h-6 text-red-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  ><path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="3"
+                    d="M6 18L18 6M6 6l12 12"
+                  ></path></svg
+                >
+              {/if}
+            </div>
+          {/if}
         </button>
       {/each}
     </div>

@@ -23,7 +23,7 @@ class DatabaseStore {
       this.questions = await qRes.json();
       this.explanations = await eRes.json();
 
-      // NEW: Load mistakes from sessionStorage (Survives F5)
+      // Load mistakes from sessionStorage (Survives F5)
       const savedMistakes = sessionStorage.getItem('exam_mistakes');
       if (savedMistakes) {
         this.mistakes = JSON.parse(savedMistakes);
@@ -36,11 +36,21 @@ class DatabaseStore {
     }
   }
 
-  // NEW: Methods to manage mistakes
+  // Methods to manage mistakes
   addMistake(id: number) {
     if (!this.mistakes.includes(id)) {
       this.mistakes.push(id);
       sessionStorage.setItem('exam_mistakes', JSON.stringify(this.mistakes));
+    }
+  }
+
+  // Remove a specific mistake
+  removeMistake(id: number) {
+    this.mistakes = this.mistakes.filter((mId) => mId !== id);
+    if (this.mistakes.length > 0) {
+      sessionStorage.setItem('exam_mistakes', JSON.stringify(this.mistakes));
+    } else {
+      sessionStorage.removeItem('exam_mistakes'); // Clean up if empty
     }
   }
 

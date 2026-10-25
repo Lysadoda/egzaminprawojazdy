@@ -1,56 +1,48 @@
 <script lang="ts">
   import {db} from '../lib/store.svelte';
   import type {Question} from '../lib/types';
+  import {renderSafeMarkdown} from '../lib/markdown';
 
   // Svelte 5 Props
   let {onExit} = $props<{onExit: () => void}>();
 
-  // Clone explanations to local state so we don't mutate the global DB directly
   let draftExplanations = $state<Record<string, string>>({...db.explanations});
-
-  // Track selected question. Fallback to 1 if empty.
   let selectedId = $state<number>(db.questions[0]?.id || 1);
-
-  // Derived current question
   let currentQuestion = $derived(
     db.questions.find((q: Question) => q.id === selectedId),
   );
 
-  // Bound to the textarea
-  let currentEditText = $state<string>(draftExplanations[selectedId] || '');
+  let currentEditText = $state<string>(
+    draftExplanations[String(selectedId)] || '',
+  );
 
-  // Sync textarea when the selected ID changes
+  // Live preview derived state
+  let previewHtml = $derived(renderSafeMarkdown(currentEditText));
+
   $effect(() => {
-    let _ = selectedId; // Depend on selectedId
-    currentEditText = draftExplanations[selectedId] || '';
+    let _ = selectedId;
+    currentEditText = draftExplanations[String(selectedId)] || '';
   });
 
   // Derived options to prevent crashing on YN questions (which lack the options object)
   let optionsToRender = $derived(
     currentQuestion?.type === 'YN'
-      ? {Y: 'Yes', N: 'No'}
+      ? {T: 'Tak', N: 'Nie'}
       : currentQuestion?.options || {},
   );
 
-  // Basic sanitization
-  function sanitizeInput(text: string): string {
-    let sanitized = text.replace(/<[^>]*>?/gm, ''); // Strip HTML
-    sanitized = sanitized.replace(/[\u200B-\u200D\uFEFF]/g, ''); // Strip invisible chars
-    return sanitized.trim();
-  }
-
   function saveToDraft() {
     if (!currentQuestion) return;
-    const cleanText = sanitizeInput(currentEditText);
 
-    if (cleanText) {
-      draftExplanations[currentQuestion.id] = cleanText;
+    // The security (DOMPurify) happens ONLY when rendering to the screen.
+    const rawText = currentEditText.trim();
+    const idStr = String(currentQuestion.id);
+
+    if (rawText) {
+      draftExplanations[idStr] = rawText;
     } else {
-      delete draftExplanations[currentQuestion.id]; // Remove key if empty
+      delete draftExplanations[idStr];
     }
-
-    // Update textarea to reflect sanitized state visually
-    currentEditText = cleanText;
   }
 
   function exportChanges() {
@@ -155,22 +147,47 @@
         </div>
       </div>
 
-      <!-- Editor Textarea -->
-      <div class="flex-1 flex flex-col min-h-[300px]">
-        <label for="explanation" class="font-bold text-[#172B4D] mb-2 text-lg">
-          Explanation Text:
-        </label>
-        <textarea
-          id="explanation"
-          bind:value={currentEditText}
-          onblur={saveToDraft}
-          placeholder="Write the explanation here. It will auto-save to draft when you click away..."
-          class="flex-1 w-full p-4 border border-slate-300 rounded-lg resize-none focus:ring-2 focus:ring-[#0C66E4] focus:border-[#0C66E4] outline-none text-[16px] leading-relaxed shadow-inner"
-        ></textarea>
-        <p class="text-sm text-slate-500 mt-2">
-          Basic HTML is stripped automatically for security. Content saves to
-          draft automatically on blur.
-        </p>
+      <!-- Editor & Markdown Preview Layout -->
+      <div class="flex gap-6 min-h-[400px]">
+        <!-- Editor Input -->
+        <div class="flex-1 flex flex-col">
+          <label
+            for="explanation"
+            class="font-bold text-[#172B4D] mb-2 text-lg"
+          >
+            Write Explanation (Markdown Supported):
+          </label>
+          <textarea
+            id="explanation"
+            bind:value={currentEditText}
+            onblur={saveToDraft}
+            placeholder="Use Markdown:&#10;### Header&#10;* **Bold List Item**"
+            class="flex-1 w-full p-4 font-mono text-sm border border-slate-300 rounded-lg resize-none focus:ring-2 focus:ring-[#0C66E4] outline-none shadow-inner bg-slate-50"
+          ></textarea>
+        </div>
+
+        <!-- Live Preview -->
+        <div class="flex-1 flex flex-col">
+          <label class="font-bold text-[#172B4D] mb-2 text-lg">
+            Live Preview:
+          </label>
+          <div
+            class="flex-1 w-full p-6 border border-slate-200 rounded-lg bg-white overflow-y-auto shadow-sm"
+          >
+            {#if previewHtml}
+              <!-- Render the safe HTML using Tailwind Typography -->
+              <div class="prose prose-sm max-w-none text-slate-800">
+                {@html previewHtml}
+              </div>
+            {:else}
+              <div
+                class="h-full flex items-center justify-center text-slate-400 italic"
+              >
+                Preview will appear here...
+              </div>
+            {/if}
+          </div>
+        </div>
       </div>
     {:else}
       <div class="flex-1 flex items-center justify-center text-slate-400">

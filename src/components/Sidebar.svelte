@@ -1,23 +1,31 @@
 <script lang="ts">
   let {currentMode, onNavigate, onJump, totalQuestions} = $props<{
-    currentMode: 'welcome' | 'test' | 'real';
-    onNavigate: (mode: 'welcome' | 'test' | 'real') => void;
-    onJump: (num: number) => void;
+    currentMode: 'welcome' | 'test' | 'real' | 'admin' | 'results';
+    onNavigate: (mode: 'welcome' | 'test' | 'real' | 'admin') => void;
+    onJump: (id: number) => boolean; // Now expects a boolean return
     totalQuestions: number;
   }>();
 
   let jumpValue = $state<number | ''>('');
+  let jumpError = $state<boolean>(false);
 
-  function handleJump() {
-    if (
-      typeof jumpValue === 'number' &&
-      jumpValue >= 1 &&
-      jumpValue <= totalQuestions
-    ) {
-      onJump(jumpValue);
-      jumpValue = ''; // reset after jump
+  function executeJump() {
+    jumpError = false;
+    if (typeof jumpValue === 'number') {
+      const success = onJump(jumpValue);
+      if (success) {
+        jumpValue = ''; // Clear input on success
+      } else {
+        jumpError = true; // Show error if ID doesn't exist
+      }
     }
   }
+
+  // Clear error if user starts typing again
+  $effect(() => {
+    let _ = jumpValue;
+    jumpError = false;
+  });
 </script>
 
 <aside
@@ -55,35 +63,46 @@
       for="jump-input"
       class="text-[14px] font-bold text-[#172B4D] uppercase tracking-wider"
     >
-      Jump to Question
+      Jump to Question ID
     </label>
 
     <div class="flex gap-2">
-      <!-- Number Input -->
+      <!-- Number Input (Removed max limit) -->
       <input
         id="jump-input"
         type="number"
         bind:value={jumpValue}
         min="1"
-        max={totalQuestions}
-        disabled={currentMode === 'real' || currentMode === 'welcome'}
-        placeholder="e.g. 5"
-        class="w-full min-w-0 bg-white border border-slate-300 rounded-md px-3 py-2 text-[16px] text-slate-700 outline-none focus:border-[#0C66E4] focus:ring-1 focus:ring-[#0C66E4] disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+        disabled={currentMode !== 'test'}
+        placeholder="e.g. 101"
+        class="w-full min-w-0 bg-white border rounded-md px-3 py-2 text-[16px] text-slate-700 outline-none focus:ring-1 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed transition-colors
+               {jumpError
+          ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
+          : 'border-slate-300 focus:border-[#0C66E4] focus:ring-[#0C66E4]'}"
+        onkeydown={e => e.key === 'Enter' && executeJump()}
       />
       <!-- Go Button -->
       <button
-        onclick={handleJump}
-        disabled={currentMode === 'real' ||
-          currentMode === 'welcome' ||
-          !jumpValue}
+        onclick={executeJump}
+        disabled={currentMode !== 'test' || !jumpValue}
         class="px-4 py-2 bg-slate-200 text-slate-700 font-semibold rounded-md hover:bg-slate-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
       >
         Go
       </button>
     </div>
-    {#if currentMode === 'real'}
+
+    <!-- Contextual Information / Errors -->
+    {#if jumpError}
+      <p class="text-[12px] font-bold text-red-600 mt-1 animate-in fade-in">
+        ID not found in database.
+      </p>
+    {:else if currentMode !== 'test'}
       <p class="text-[12px] text-slate-500 mt-1">
-        Navigation disabled in Real Mode.
+        Only available in Test Mode.
+      </p>
+    {:else}
+      <p class="text-[12px] text-slate-500 mt-1">
+        Total questions: {totalQuestions}
       </p>
     {/if}
   </div>

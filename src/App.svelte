@@ -1,6 +1,6 @@
 <script lang="ts">
-  import {onMount} from 'svelte';
-  import {db} from './lib/store.svelte';
+  import { onMount } from 'svelte';
+  import { db } from './lib/store.svelte';
 
   import TopBar from './components/TopBar.svelte';
   import Sidebar from './components/Sidebar.svelte';
@@ -8,25 +8,66 @@
   import QuestionView from './components/QuestionView.svelte';
   import ResultsView from './components/ResultsView.svelte';
   import AdminEditor from './components/AdminEditor.svelte';
+  import MistakesCart from './components/MistakesCart.svelte';
 
   // Svelte 5 State Runes
-  let appMode = $state<'welcome' | 'test' | 'real' | 'results' | 'admin'>(
-    'welcome',
-  );
+  let appMode = $state<'welcome' | 'test' | 'real' | 'results' | 'admin'>('welcome');
   let currentQuestionIndex = $state(0);
   let userAnswers = $state<Record<number, string | null>>({});
+
+  let isUrlRestored = $state(false);
 
   // Svelte 5 Derived Runes (Auto-updates when db or index changes)
   let totalQuestions = $derived(db.questions.length);
   let currentQuestion = $derived(db.questions[currentQuestionIndex]);
   let isFirst = $derived(currentQuestionIndex === 0);
-  let isLast = $derived(
-    totalQuestions > 0 && currentQuestionIndex === totalQuestions - 1,
-  );
+  let isLast = $derived(totalQuestions > 0 && currentQuestionIndex === totalQuestions - 1);
 
-  // Initialize DB when app mounts in the browser
-  onMount(() => {
-    db.initialize();
+  onMount(async () => {
+    // 1. Wait for database to load COMPLETELY
+    await db.initialize();
+
+    // 2. READ URL
+    const params = new URLSearchParams(window.location.search);
+    const urlMode = params.get('mode') as typeof appMode;
+    const urlQ = params.get('q');
+
+    if (['test', 'real', 'admin', 'results'].includes(urlMode)) {
+      appMode = urlMode;
+
+      if (urlQ) {
+        const targetIndex = db.questions.findIndex((q) => q.id === Number(urlQ));
+        if (targetIndex !== -1) {
+          currentQuestionIndex = targetIndex;
+        }
+      }
+    }
+
+    // 3. UNLOCK URL WRITING (Boot sequence finished)
+    isUrlRestored = true;
+  });
+
+  // 3. WRITE URL SILENTLY (No History Stuffing)
+  $effect(() => {
+    // FIX: Do absolutely nothing until the DB is loaded AND the initial URL was read
+    if (!db.isLoaded || !isUrlRestored) return; // Wait until DB is ready
+
+    const url = new URL(window.location.href);
+
+    if (appMode === 'welcome') {
+      url.search = ''; // Clean URL on welcome screen
+    } else {
+      url.searchParams.set('mode', appMode);
+
+      if ((appMode === 'test' || appMode === 'real') && currentQuestion) {
+        url.searchParams.set('q', String(currentQuestion.id));
+      } else {
+        url.searchParams.delete('q');
+      }
+    }
+
+    // history.replaceState updates the address bar WITHOUT adding to the back-button history!
+    window.history.replaceState({}, '', url);
   });
 
   function handleModeSelection(mode: 'welcome' | 'test' | 'real' | 'admin') {
@@ -37,6 +78,9 @@
 
   function handleAnswer(ans: string) {
     userAnswers[currentQuestionIndex] = ans;
+    if (appMode === 'test' && ans !== currentQuestion.correct) {
+      db.addMistake(currentQuestion.id);
+    }
   }
 
   function handleNext() {
@@ -51,11 +95,15 @@
     appMode = 'results';
   }
 
-  function handleJump(num: number) {
-    const target = num - 1;
-    if (target >= 0 && target < totalQuestions) {
-      currentQuestionIndex = target;
+  function handleJump(questionId: number): boolean {
+    const targetIndex = db.questions.findIndex((q) => q.id === questionId);
+
+    if (targetIndex !== -1) {
+      currentQuestionIndex = targetIndex;
+      return true; // Success
     }
+
+    return false; // ID not found
   }
 
   // Svelte 5 effect for global window events (cleaner and safer than <svelte:window>)
@@ -76,14 +124,10 @@
 <!-- DB Loading / Error States -->
 {#if !db.isLoaded}
   <div class="flex h-screen w-screen items-center justify-center bg-white">
-    <div class="text-2xl font-bold text-[#172B4D] animate-pulse">
-      Loading Database...
-    </div>
+    <div class="text-2xl font-bold text-[#172B4D] animate-pulse">Loading Database...</div>
   </div>
 {:else if db.hasError}
-  <div
-    class="flex h-screen w-screen items-center justify-center bg-white text-red-600 flex-col gap-4"
-  >
+  <div class="flex h-screen w-screen items-center justify-center bg-white text-red-600 flex-col gap-4">
     <svg class="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"
       ><path
         stroke-linecap="round"
@@ -93,48 +137,31 @@
       ></path></svg
     >
     <div class="text-xl font-bold">Failed to load database.</div>
-    <div class="text-slate-500">
-      Check .env configuration and ensure files exist in public/data/.
-    </div>
+    <div class="text-slate-500">Check .env configuration and ensure files exist in public/data/.</div>
   </div>
 {:else}
   <!-- Main Application Shell -->
-  <div
-    class="flex flex-col h-screen w-screen bg-white font-sans text-[16px] text-slate-800 overflow-hidden min-w-[1400px]"
-  >
+  <div class="flex flex-col h-screen w-screen bg-white font-sans text-[16px] text-slate-800 overflow-hidden min-w-[1400px]">
     <TopBar />
 
     <div class="flex flex-1 overflow-hidden">
       <!-- Hide standard sidebar during Admin Mode -->
       {#if appMode !== 'admin'}
-        <Sidebar
-          currentMode={appMode === 'results' ? 'test' : appMode}
-          onNavigate={handleModeSelection}
-          onJump={handleJump}
-          {totalQuestions}
-        />
+        <Sidebar currentMode={appMode === 'results' ? 'test' : appMode} onNavigate={handleModeSelection} onJump={handleJump} {totalQuestions} />
       {/if}
 
-      <main
-        class="flex-1 overflow-hidden {appMode === 'admin'
-          ? ''
-          : 'p-6 bg-slate-50 flex items-center justify-center'}"
-      >
+      <main class="flex-1 overflow-hidden {appMode === 'admin' ? '' : 'p-6 bg-slate-50 flex items-center justify-center'}">
         {#if appMode === 'welcome'}
           <WelcomeScreen onSelectMode={handleModeSelection} />
         {:else if appMode === 'admin'}
           <!-- Admin Mode receives an exit callback -->
           <AdminEditor onExit={() => handleModeSelection('welcome')} />
         {:else if appMode === 'results'}
-          <div
-            class="flex flex-col w-full max-w-[1600px] h-full justify-center"
-          >
+          <div class="flex flex-col w-full max-w-[1600px] h-full justify-center">
             <ResultsView {userAnswers} />
           </div>
         {:else}
-          <div
-            class="flex flex-col w-full max-w-[1600px] h-full justify-center"
-          >
+          <div class="flex flex-col w-full max-w-[1600px] h-full justify-center">
             <!-- {#key} forces re-render and animations when question changes -->
             {#key currentQuestion.id}
               <QuestionView
@@ -156,4 +183,8 @@
       </main>
     </div>
   </div>
+  <!-- Slide-out Cart (Floating above everything) -->
+  {#if appMode === 'test'}
+    <MistakesCart onJump={handleJump} />
+  {/if}
 {/if}
